@@ -1,0 +1,1042 @@
+---
+output:
+  rmdformats::html_docco:
+    code_folding: hide
+    self_contained: true
+    thumbnails: false
+    lightbox: false
+    md_extensions: -ascii_identifiers
+---
+
+```{r, setup, include=FALSE}
+require(mosaic)   # Load additional packages here 
+knitr::opts_chunk$set(
+  comment="#",
+  warning = FALSE,
+  tidy=FALSE,     # display code as typed
+  size="small")   # slightly smaller font for code
+```
+
+# 二値予測問題問題について
+
+- 二値予測問題とは
+    - テストに合格したか、しなかったか
+    - 生きてるか、死んでるか
+    - 顧客を維持できたか、できなかったか
+- 二値の問題なので、ランダムに推測しても50%の正解率は達成できるはず。
+- 今回の例題では、機械学習を使用してどのようにオッズを克服するか説明する。
+    - 解析の参考は以下のkaggleのkernelを参考にしています(ただし社内からでは見られない)
+    - [A Data Science Framework: To Achieve 99% Accuracy](https://www.kaggle.com/ldfreeman3/a-data-science-framework-to-achieve-99-accuracy)
+
+# データサイエンスのフレームワーク
+
+1. **問題定義**:
+    - データサイエンス・AI・ビッグデータ・機械学習を使って何をしたいかを明確にする。
+    - 機械学習を使わずに問題を解決できるのであれば、使わなくて良い。
+2. **データの収集**:
+    - 問題を解決するためのデータを収集する。
+3. **探索的データ解析(EDA)**:
+    - データの特徴を捉え、仮説を立てる。
+    - 記述統計的に確認したり(平均、最大・最小値、度数 etc)、ひたすらグラフを書いて、データ内の潜在的な問題を探す。
+4. **データの前処理**:
+    - 解析したいデータを、機械学習のアルゴリズムにインプットするために整形する。
+    - データを把握しつつ、4C ( Correcting, Completeing, Creating, Converting )の工程を行う(後述)
+5. **データモデルの作成・検証・改良**
+    - 与えられたデータセットと解決したい問題に応じて、データモデルを作成する。
+    - 作成したデータモデルの精度は十分か、過学習していないか等を考慮しながら改良していく。
+6. **分析結果を元とした施策の実行**
+    - 解析した結果を元に、施策の実行を行う。
+
+# 問題定義
+
+- 今回の勉強会ではタイタニック号の乗客の生存結果を予測するためのアルゴリズムを開発する。
+- プロジェクトの概要は以下の通り(Google翻訳まま)
+
+>プロジェクトの概要：
+>RMSタイタニック号の沈没は歴史上最も悪名高い難破船のひとつです。 1912年4月15日、乙女の航海中、タイタニック号は氷山と衝突した後沈没し、2224人の乗客と乗組員のうち1502人が死亡した。このセンセーショナルな悲劇は国際社会に衝撃を与え、船舶の安全規制を改善することにつながりました。
+>
+>難破船がこのような命の喪失につながった理由の1つは、乗客と乗組員のための救命ボートが十分になかったことです。沈没を乗り切ることには何らかの幸運の要素が関係していましたが、女性、子供、そして上流階級のように、他の人々よりも生き残る可能性が高いグループがありました。
+>
+>この課題では、どのような種類の人々が生き残る可能性が高いかの分析を完了するようお願いします。特に、どの乗客が悲劇を乗り越えたかを予測するために、機械学習のツールを適用するようお願いします。
+
+# データの収集
+
+今回のデータはRの`titanic` ライブラリのデータを使用。
+
+# 探索的データ解析 & 前処理
+
+今回使用するデータについて、データの内容を解析しつつ機械学習用の前処理を行う。
+
+## ライブラリの読み込み
+
+解析に必要なライブラリを読み込んでいく
+```{r}
+## *ライブラリの読み込み----
+
+# tidyverse:
+# dplyr, tidyr, purrr などの
+# 解析に必要なパッケージが全てまとまったライブラリ
+library(tidyverse)
+
+# magrittr:
+# パイプ演算子(%>%)の亜種(%<>%, %T>%, %$%)を使用するためのライブラリ
+library(magrittr)
+
+# ggplot2:
+# グラフ作成用ライブラリ
+library(ggplot2)
+
+# infotheo:
+# 連続値を離散値に変換するために使用(discretize)
+library(infotheo)
+
+# Hmisc:
+# リストを見やすく表示するlist.tree()のために使用
+library(Hmisc)
+
+# DataExplorer:
+# データの概要をレポート形式でまとめてくれるライブラリ
+library(DataExplorer)
+
+# rpivotTable:
+# ピボットテーブルを作成するライブラリ
+library(rpivotTable)
+
+# esquisse:
+# ggplotのグラフをGUIで作成するためのライブラリ
+library(esquisse)
+
+# mlr:
+# 機械学習関連のパッケージが全てまとまったライブラリ
+library(mlr)
+
+# DT:
+# Rmd形式でデータを出力する際に見やすい形式にするためのライブラリ
+# (コード単体を回す際は必要なし)
+library(DT)
+
+# titanic:
+# 勉強会で使用するデータを読み込むために使用
+library(titanic)
+
+```
+
+## データを概要をざっくり確認
+
+`head()`, `summary()`, `View()`などを使ってデータの概略をすばやく確認する。
+
+```{r}
+## *探索的データ分析(EDA) ----
+
+# データの確認(datatableはRmd用, テーブルは横スクロール可能)----
+titanic::titanic_train %>% head(50) %>% 
+  datatable(
+    rownames = FALSE,
+    class = 'nowrap',
+    extensions = c('FixedColumns','Scroller'),
+    options = list(
+      # FixedColumns
+      dom          = 'Bfrtip',
+      scrollX      = TRUE,
+      # Scroller
+      deferRender = TRUE,
+      scrollY = 200,
+      scroller = TRUE
+    )
+  )
+
+# View()でデータの確認
+# titanic_train %>% View
+```
+### titanicデータの内容について
+各列の意味は以下の通り
+
+|列名|説明|
+|:--|:--|
+|PassengerId|乗客識別ユニークID|
+|Survived|生存フラグ（0=死亡、1=生存）|
+|Pclass|チケットクラス(1=お金持ち、2=一般階級、3=労働階級)|
+|Name|乗客の名前|
+|Sex|性別（male=男性、female＝女性）|
+|Age|年齢|
+|SibSp|タイタニックに同乗している兄弟/配偶者の数|
+|parch|タイタニックに同乗している親/子供の数|
+|ticket|チケット番号|
+|fare|料金|
+|cabin|客室番号|
+|Embarked|出港地（タイタニックへ乗った港、C=Cherbourg、Q=Queenstown、S=Southampton）|
+
+### データのサマリー確認
+```{r}
+# クラスの確認----
+titanic_train %>% map(class) %>% list.tree()
+
+# データのサマリーの確認----
+# ・titanic_trainではcharacter型のNAが""となっているため、""をNAに変換する
+#   (NAの数をカウントするため)
+# ・character型の列とその他一部の列について、factor型への変換を行う
+#   (要素数をカウントするため。)
+
+titanic::titanic_train %>% 
+  mutate_if(
+    .predicate = is.character,
+    .funs = ~ ifelse(.=="",NA,.) %>% factor
+  ) %>%
+  mutate_at(
+    .vars = c('Survived','Pclass','Sex'),
+    .funs = factor
+  ) %>%
+  summary
+
+# 死亡率を計算----
+# (常に"死亡した"と予測しても正解率は61.6%程度となる)
+Dead_rate = 549/(342+549)
+Dead_rate %>% print
+```
+### データ概要の確認結果
+- `Survived`は今回のプロジェクトで推定したい値。
+    - **推定の際は、的確な説明変数の組み合わせを選択することが重要。**
+    - **単に説明変数を増やせば精度が上がる、というわけではない**
+- `PassengerID`は乗客を一意に識別するためのIDなので、説明変数には用いない。
+- `Ticket`についても、乗客に与えられたランダムな識別子として考え、今回は除外。
+- `Name`には様々な情報が入っているため、後々特徴量エンジニアリングで使用することができる。
+    - Master. やDr. のtitleから社会的地位を抽出可能
+    - Mr. や Mrs. のtitleから性別が抽出可能(今回は既にSexの情報があるため使わない)
+- `SibSp`や`Parch`は後々、特徴量エンジニアリングで使用。
+  　- 「乗客に含まれる家族の人数」や「乗客が家族なしで乗っていたかどうか」を抽出する。
+- `Cabin`も`Name`と同じように、様々な情報が含まれている
+    - 事故が発生した時の船内での位置の推定ができそう
+    - 客室のレベルによる社会的地位の推定ができそう
+    - ただし、`NA`が多いため今回の分析からは除外
+
+## データの詳細な解析 & 前処理
+- データの概要を掴んだ後は、以下のような方法でグラフの詳細を分析していく。
+    - ピボットテーブルを作成してみる。
+    - ひたすらグラフを書いてみる。
+    - 思い当たるデータの変形を試してみる。
+- データの解析を行いながら、並行して機械学習用の前処理工程も行っていく。
+
+### 前処理における「4C」
+
+機械学習にかけるための前処理として、以下の「4C」の工程を行う必要がある。
+
+- **Correcting**
+    - 異常値は外れ値の修正処理。
+    - もしデータを確認した際、明らかな異常があれば修正or除外するか決定する。
+    - 今回のプロジェクトの`sumarry()`からは、一見異常(age=800など)は見当たらない。
+- **Completeing**
+    - データに含まれる`NA`に対する補完処理。
+        - 機械学習のアルゴリズムによっては`NA`が処理できないため、補完が必要
+    - `NA`に対する処理としては、以下の方法が基本的
+        - レコードの削除(大半のデータが`NA`でない限りは非推奨)
+        - 平均値・中央値で置き換え(定量的データ)
+        - 最頻値で置き換え(定性的データ)
+        - 平均値 ± 標準偏差に収まる程度の乱数で置き換え
+        - 欠損値自体を何かしらの方法で推測
+            - 手間と計算コストがかかるため、まずは基本的な補完を行うことが先決。
+    - 今回のプロジェクトでは、`NA`に対して以下の処理を行う。
+        - `Cabin`:`NA`が多いので削除
+        - `age`:中央値を代入
+        - `Embarked`：最頻値を代入
+
+- **Creating**
+    - 既存の変数を使用して新しい特徴量を作成する(特徴量エンジニアリングとも)
+        - データサイエンスの芸術的な部分とも言われ、解析者の腕が試される。
+    - 今回のプロジェクトでは、Nameに含まれるtitleについて特徴量を作成し、Survivedに影響するか確認する。
+- **Converting**
+    - データのフォーマットの変更処理。
+    - `mlr`では分類問題の目的変数はfactor型に設定する必要があるため、変換する。
+    - 定量的データはそのままだと機械学習のアルゴリズムにかけられないため、ダミー変数へ変換する。
+    
+引き続きデータの探索的解析を行いつつ、同時に前処理も行っていく。
+
+```{r}
+# 探索用データの作成----
+# 1. character型の空白行をNAへ変換
+# 2. 相関を確認したいcharacter型のみfactor型へ変換(create_report関数への入力用)
+# 3. dummy変数であるSurvived/Pclassもfactor型へ変換
+# 4. PassengerId は解析に使用しないため削除
+
+data_eda <-
+  titanic::titanic_train %>% 
+  mutate_if(
+    .predicate = is.character,
+    .funs = ~ ifelse(.=="",NA,.)
+  ) %>%
+  mutate_at(
+    .vars = c('Survived','Pclass','Sex','Embarked'),
+    .funs = factor
+  ) %>% 
+  select(-PassengerId)
+
+# 各列のNAの割合を確認----
+data_eda %>% plot_missing()
+
+# Completeing:欠損値補完(後述) ----
+# 欠損値の多いCabinはデータから削除し
+# Age,EmbarkはMedian,Modeで補完
+data_eda %<>% 
+  select(-Cabin) %>% 
+  mlr::impute(
+    cols=list(
+      Age = imputeMedian(),
+      Embarked = imputeMode()
+    )
+  ) %>% .$data
+```
+
+### 詳細解析に役立つパッケージ
+
+以下の3つのパッケージはすばやくデータを確認する際に役立つ。
+
+- `DataExplorer` : データの概要をグラフ化したレポートを自動で作成する。
+- `rpivotTable` : ピボットテーブルが作成できるパッケージ。
+- `esquisser` : GUIで`ggplot2`の作成ができるパッケージ。
+
+```{r}
+# 詳細解析に便利なパッケージ3種類----
+
+# レポートの作成
+#data_eda %>% DataExplorer::create_report()
+
+# ピボットテーブルの確認
+#data_eda %>% rpivotTable::rpivotTable()
+
+# 単純なグラフの確認
+#data_eda %>% esquisse::esquisser()
+```
+
+### グラフによるデータの解析 {.tabset}
+
+
+#### 性別と生存率
+
+男性より女性のほうが生存率が高い
+```{r echo=FALSE}
+# 性別と生存率について----
+g <-
+  data_eda %$% 
+  ggplot(
+    data = .,
+    aes(x = Sex, fill = Survived)
+  ) +
+  geom_bar(
+    stat="count",
+    position = "fill"
+  )
+g %>% print
+
+```
+
+#### 年齢と生存率
+
+生存者/死亡者の密度曲線
+
+- 年齢が18歳以下であれば死亡者より生存者のほうが多い
+- 年齢が65歳以上になると死亡率が大きくなる。
+
+```{r echo=FALSE}
+
+# 年齢と生存率について----
+
+# 年齢別_生存者/死亡者合計の密度曲線
+g1 <-
+  data_eda %$% 
+  ggplot(
+    data=.,
+    aes(x=Age,fill=Survived)
+  ) +
+  geom_density(alpha=.3)
+g1 %>% print
+```
+
+年齢をbiningして生存率を確認する。
+
+```{r}
+# 年齢をbiningして生存率を確認する
+data_eda %<>%
+  mutate(
+    AgeBin = Age %>% discretize(disc="equalwidth",nbins=6) %>% .$X %>% factor
+  )
+```
+
+```{r echo=FALSE}
+g2 <-
+  data_eda %$% 
+  ggplot(
+    data = .,
+    aes(x=AgeBin,fill = Survived)
+  ) +
+  geom_bar(
+    stat="count",
+    position ="fill"
+  )
+g2 %>% print
+
+```
+
+#### Pclassと生存率
+
+- 部屋の等級が上がっていくにつれて生存率が高くなる
+
+```{r echo=FALSE}
+
+## Pclassと生存率について----
+g <-
+  data_eda %$% 
+  ggplot(
+    data = .,
+    aes(x = Pclass, fill = Survived)
+  ) +
+  geom_bar(
+    stat="count",
+    position = "fill"
+  )
+g %>% print
+
+```
+
+#### Fareと生存率
+
+生存者/死亡者の密度曲線
+
+- 乗船料が高くなるほど生存率も高くなる。
+
+```{r echo=FALSE}
+
+## Fareと生存率について----
+
+# Fare別_生存者/死亡者合計の密度曲線
+g1 <-
+  data_eda %$% 
+  ggplot(
+    data=.,
+    aes(x=Fare,fill=Survived)
+  ) +
+  geom_density(alpha=.3)
+g1 %>% print
+```
+
+`Fare`をbiningして生存率を確認する。
+
+```{r}
+# Fareをbiningして生存率を確認する
+data_eda %<>%
+  mutate(
+    FareBin = Fare %>% discretize(disc="equalfreq",nbins=5) %>% .$X %>% factor
+  )
+
+```
+```{r echo=FALSE}
+
+g2 <-
+  data_eda %$% 
+  ggplot(
+    data = .,
+    aes(x=FareBin,fill = Survived)
+  ) +
+  geom_bar(
+    stat="count",
+    position ="fill"
+  )
+g2 %>% print
+
+```
+
+#### Embarkedと生存率
+
+- 出港地がC, Q, Sの順に生存率が高い。
+
+```{r echo=FALSE}
+
+## Embarkedと生存率について----
+g <-
+  data_eda %$% 
+  ggplot(
+    data = .,
+    aes(x = Embarked, fill = Survived)
+  ) +
+  geom_bar(
+    stat="count",
+    position = "fill"
+  )
+g %>% print
+```
+
+Pclass別にEmbarked別の生存率を確認
+
+- `Pclass`が同じでも、出港地がCであれば生存しやすく、Sであれば死亡しやすい
+
+```{r echo=FALSE}
+# Pclass別にEmbarked別の生存率を確認
+# Pclassが同じでも、出港地がCであれば生存しやすく、
+# Sであれば死亡しやすい
+g1 <-
+  data_eda %$% 
+  ggplot(
+    data = .,
+    aes(x = Embarked, fill = Survived)
+  ) +
+  geom_bar(
+    stat="count",
+    position = "dodge"
+  ) +
+  facet_grid(. ~ Pclass)
+g1 %>% print
+
+g2 <-
+  data_eda %$% 
+  ggplot(
+    data = .,
+    aes(x = Embarked, fill = Survived)
+  ) +
+  geom_bar(
+    stat="count",
+    position = "fill"
+  ) +
+  facet_grid(. ~ Pclass)
+g2 %>% print
+```
+
+#### SibSp/Parchと生存率
+
+- `SibSp`は兄弟/配偶者の数。`Parch`は親/子供の数。
+- `SibSp`は2の乗客が最も生存率が高く、その後SibSpが高くなるに連れ生存率は下がる。
+- `Parch`は4以上になると生存率が極度に低くなる。
+
+```{r echo=FALSE}
+
+## SibSp/Parchと生存率について----
+g1 <-
+  data_eda %$% 
+  ggplot(
+    data = .,
+    aes(x = SibSp, fill = Survived)
+  ) +
+  geom_bar(
+    stat="count",
+    position="fill"
+  )
+g1 %>% print
+
+g2 <-
+  data_eda %$% 
+  ggplot(
+    data = .,
+    aes(x = Parch, fill = Survived)
+  ) +
+  geom_bar(
+    stat="count",
+    position="fill"
+  )
+g2 %>% print
+```
+
+新たに`FamilySize`, `IsAlone`といった特徴量を作成し、生存率を確認してみる。
+
+- `FamilySize` SibSp+Parch+1で算出。
+- `IsAlone` SibSpとParchの両方が0であれば`Alone`,それ以外であれば`NotAlone`とする。
+
+```{r}
+# FamilySizeと生存確率の確認
+data_eda %<>% mutate(FamilySize = SibSp+Parch+1)
+
+```
+```{r echo=FALSE}
+g <-
+  data_eda %$% 
+  ggplot(
+    data = .,
+    aes(x=FamilySize,fill=Survived)
+  ) +
+  geom_bar(
+    stat="count",
+    position="fill"
+  )
+g %>% print
+```
+```{r}
+# IsAloneフラグ(乗客に家族がいるか)で生存率が変わるか確認
+# (独り身は死亡しやすい)
+data_eda %<>% mutate(IsAlone = ifelse(SibSp+Parch==0,"Alone","NotAlone") %>% factor)
+```
+```{r echo=FALSE}
+g <-
+  data_eda %$% 
+  ggplot(
+    data = .,
+    aes(x=IsAlone, fill=Survived)
+  ) +
+  geom_bar(
+    stat="count",
+    position="fill"
+  )
+g %>% print
+```
+
+作成した`FamilySize`, `IsAlone`が生存率を説明する有効な特徴量かを確認。
+
+- `Survived`と`FamilySize`はあまり相関が見えない
+- `Survived`と`IsAlone`は、`SibSp`や`Parch`よりも強い相関があることがわかる。
+    - このため、`IsAlone`は新たな特徴量として後ほど採用する。
+
+```{r}
+# FamilySize, IsAloneとSurvivedの相関を確認----
+# IsAloneはSurvivedと相関が強いため、新たな特徴量として後ほど使用
+data_eda %>%
+  select(
+    Survived,
+    SibSp,
+    Parch,
+    FamilySize,
+    IsAlone
+  ) %>%
+  plot_correlation()
+
+```
+
+#### Nameと生存率
+
+`Name`変数に含まれる`Title`(Mr, Miss, Dr など)を抽出する
+
+```{r}
+
+# Nameに含まれるTitleと生存率について----
+
+# NameからTitleを抽出
+data_eda %<>% 
+  mutate(
+    Title = Name %>% str_extract("\\w+\\.") %>% str_remove("\\.")
+  )
+
+# Titleの中身を確認
+data_title <-
+  data_eda %>% 
+  group_by(Title) %>% 
+  dplyr::summarize(count=n()) %>% 
+  arrange(desc(count))
+
+data_title %>% print
+
+# Titleの数が基準値(stat_min)よりも小さければ「Misc」としてまとめる
+# (Titleに対する過学習を防ぐため)
+stat_min <-5
+title_names <- data_title$Title[data_title$count < stat_min]
+data_eda %<>% 
+  mutate(Title=ifelse(is.element(Title,title_names),"Misc",Title) %>% factor)
+```
+
+`Title`毎の生存率を確認
+
+- 男女合算で`Title`別生存率を見ると、男女差の効果に埋もれてしまい`Title`の効果が分かりづらい
+- 男女別に`Title`別生存率を見ると、Dr, Master, Misc では生存率が上がり、Rev(牧師)は生存者がいないことが分かる。
+- `Survived`を説明する変数として後々使用することとする。
+
+```{r echo=FALSE}
+# Titleごとに生存確率を確認
+g <-
+  data_eda %$% 
+  ggplot(
+    data = .,
+    aes(x = Title, fill = Survived)
+  ) +
+  geom_bar(
+    stat="count",
+    position="fill"
+  )
+g %>% print
+
+# 男女別にTitleの効果を確認
+# Dr,Master,Miscは生存しやすく、Revは死亡しやすい
+g <-
+  data_eda %$% 
+  ggplot(
+    data = .,
+    aes(x = Title, fill = Survived)
+  ) +
+  geom_bar(
+    stat="count",
+    position="fill"
+  ) +
+  facet_grid(Sex ~.)
+g %>% print
+```
+
+### Converting(データのフォーマット変更)
+
+「4C」の最後の一つである、機械学習用のフォーマット変更を行う。
+
+- 不必要な説明変数(Name,Ticket,FamilySize,Age,Fare)は削除する
+- factor変数はone-hotベクトル表現に変換(`createDummyFeatures()`を使用)
+
+```{r}
+# 今一度データの中身を確認----
+data_eda %>% head(50) %>% 
+  datatable(
+    rownames = FALSE,
+    class = 'nowrap',
+    extensions = c('FixedColumns','Scroller'),
+    options = list(
+      # FixedColumns
+      dom          = 'Bfrtip',
+      scrollX      = TRUE,
+      # Scroller
+      deferRender = TRUE,
+      scrollY = 200,
+      scroller = TRUE
+    )
+  )
+
+#data_eda %>% View
+data_eda %>% map(class) %>% list.tree(maxcomp=15)
+
+# Converting(データのフォーマット変更)----
+# 1.不必要な説明変数(Name,Ticket,FamilySize,Age,Fare)を削除
+# 2.mlr::createDummyFeatures()でfactor型をダミー変数に変換
+data_ml <-
+  data_eda %>%
+  select(-Name, -Ticket, -FamilySize, -Age, -Fare) %>% 
+  createDummyFeatures(target="Survived")
+```
+
+#### 定量的データのビニングについて
+
+- 定量的データをビニングすると線形モデル等の一部のアルゴリズムでは精度が向上することもある。
+    - ただし決定木等のアルゴリズムでは精度変わらない or 悪化する可能性もあり。
+    - 参考：[Pythonではじめる機械学習](http://nlp.dse.ibaraki.ac.jp/~shinnou/zemi2018/py-ml/py-ml-fujii-0525.pdf)
+
+# データモデルの作成
+
+- 説明変数をもとに、目的変数を予測するモデルの作成を行う。
+
+## アルゴリズムの分類
+
+- 機械学習のアルゴリズムは大きく以下ように分類できる。
+    - **教師あり学習**:正しい答えを含む訓練データセットを使用してモデルの訓練を行う。
+        - 分類:離散変数を目標変数とする教師あり学習
+        - 回帰:連続変数を目標変数とする教師あり学習
+    - **教師なし学習**:正しい答えが含まれない訓練データセットを使用して、モデルの訓練を行う。
+        - 次元削減:データセットの次元数を何かしらの基準に基づき低次元へと削減する。
+        - クラスタリング:データセットを何かしらの基準に基づきグループに分ける。
+    - **強化学習**:上記２つの学習のハイブリッド。モデルははじめから正しい答えを与えられるのではなく、一連のイベントのあとで答えを与えられる。
+- 今回のプロジェクトは教師あり学習(回帰)に分類される。
+
+## mlrによるモデル作成の流れ
+
+- `mlr`パッケージを使った際のデータモデル作成の流れの一例を記載する。
+- `mlr`に関するより詳細な説明は[有志による本家チュートリアルの日本語訳](https://nozma.github.io/mlr_tutorial/)を参照。
+
+1. **タスクの定義**
+    - 実行したい機械学習の種類(回帰、分類etc), 訓練データ, 目的変数の定義を行う。
+2. **学習器の構築**
+    - タスクを実行するために、どの機械学習のアルゴリズムを使用するか選択する。
+3. **学習器の性能評価**
+    - ベンチマーク試験を行い、学習器の性能を評価する。
+4. **チューニング**
+    - 学習器の性能が足りない場合、チューニングを行い精度の向上を目指す。
+    - ハイパーパラメータの最適化、前処理方法の見直し、説明変数の変更などを行う。
+        - 今回のプロジェクトでは実際にハイパーパラメータのチューニングを行なってみる。
+
+## タスクの定義
+
+二値分類問題の場合は`makeClassifTask`でタスクの定義を行う。
+
+```{r}
+# タスクの定義----
+titanic.task = makeClassifTask(id="titanic",data=data_ml,target="Survived")
+titanic.task %>% print
+```
+
+## 学習機の構築
+
+- `listLearners()`で使用できる学習器の一覧を確認できる。
+- `makeLearner()`で学習器の構築を行う。
+
+```{r}
+# 使用できるアルゴリズムの一覧を出力----
+# properties = "prob" : 確率を出力できるアルゴリズムの一覧
+#listLearners(titanic.task, properties ="prob") %>% View
+listLearners(titanic.task, properties ="prob") %>%  head(50) %>% 
+  datatable(
+    rownames = FALSE,
+    class = 'nowrap',
+    extensions = c('FixedColumns','Scroller'),
+    options = list(
+      # FixedColumns
+      dom          = 'Bfrtip',
+      scrollX      = TRUE,
+      # Scroller
+      deferRender = TRUE,
+      scrollY = 200,
+      scroller = TRUE
+    )
+  )
+
+# 使用するアルゴリズムをリスト化---
+titanic.lrns =
+  list(
+     makeLearner("classif.kknn", id="kknn")
+    ,makeLearner("classif.naiveBayes", id="naiveBayes")
+    ,makeLearner("classif.nnet", id="nnet")
+    ,makeLearner("classif.gausspr", id="gausspr")
+    ,makeLearner("classif.svm", id="svm")
+    ,makeLearner("classif.rpart", id="rpart")
+    ,makeLearner("classif.randomForest", id="randomForest")
+    ,makeLearner("classif.xgboost", id="xgboost")
+  )
+```
+
+### アルゴリズムの選び方
+
+- **「すべてのデータセットに対して最も良い予測精度を返すモデル」は存在しない。**
+- 最適なアルゴリズムが知りたければ、一通り全てのアルゴリズムを試してみるのが一番早い。
+    - といいつつ、実際はとりあえずXGBoost か Fandom forestを使っている人も割と多い。
+
+## 学習機の性能評価
+
+- ベンチマーク試験は`benchmark()`で実行。
+- ベンチマーク試験の結果はプロットすることができる。
+
+```{r include=FALSE}
+# チューニング前の各アルゴリズムの性能を評価----
+titanic.bmr = benchmark(
+  learners    = titanic.lrns,
+  tasks       = titanic.task,
+  resamplings = cv5,
+  measures    = list(acc,timetrain)
+)
+```
+```{r eval=FALSE}
+# チューニング前の各アルゴリズムの性能を評価----
+titanic.bmr = benchmark(
+  learners    = titanic.lrns,
+  tasks       = titanic.task,
+  resamplings = cv5,
+  measures    = list(acc,timetrain)
+)
+```
+
+```{r}
+# ベンチマークテストの結果(精度)をグラフで確認----
+g1<-
+  plotBMRBoxplots(
+    titanic.bmr,
+    measure = acc,
+    style="violin"
+  ) +
+  aes(color = learner.id) +
+  theme(strip.text.x = element_text(size = 6))
+g1 %>% print
+
+# ベンチマークテストの訓練にかかった時間をグラフで確認----
+g2<-
+  plotBMRBoxplots(
+    titanic.bmr,
+    measure = timetrain,
+    style="violin"
+  ) +
+  aes(color = learner.id) +
+  theme(strip.text.x = element_text(size = 6))
+g2 %>% print
+```
+
+## モデルのパフォーマンス評価
+
+- 基本的なデータの整形・機械学習により、80%弱の精度で乗客の生存を予測できた。
+    - 数行のコードの割には悪くない精度に見える。
+- モデルの性能を改良する前に、これ以上時間をかけて改良する価値があるかを考える。
+    - 例えば、精度を0.1%上げるために3ヶ月の開発期間を設ける価値はあるか？
+    - 研究所勤務なら時間をかける価値はあるし、ビジネスの現場では時間をかける価値はない。
+
+### ベースライン精度の決定
+
+- モデルを改良する際は、ベースとなるモデルが改良する価値があるかを判断する必要がある。
+    - 性能の悪いモデルを地道に改良するより、新しいモデルを一から作るほうが早いかもしれない。
+- 判断基準としては、オッズ比を使用するのが最も簡単
+    - 今回のプロジェクトであれば、訓練データから61.6%の確率で乗客が死亡していることから、推定精度がそれ以下となるモデルは改良するに値しないと判断する。
+
+## ハイパーパラメータのチューニング
+
+「改良する価値がある」と判断したモデルについて、ハイパーパラメータのチューニングを行う。
+
+### グリッドサーチ用のパラメータを設定する。
+
+- `makeParamSet()`により、探索したいパラメータを設定。
+- 各モデルのチューニング可能なパラメータを知りたい場合は`getParamSet()`やヘルプを確認する
+
+```{r}
+# svmについてチューニングできるハイパーパラメータを確認----
+getParamSet("classif.svm")
+
+# パラメータの意味が知りたい場合はヘルプを確認----
+#?svm
+
+# グリッドサーチ用のハイパーパラメータを設定----
+grid_n_estimator = c(10, 50, 100, 300)
+grid_ratio       = c(.1, .25, .5, .75, 1.0)
+grid_learn       = c(.01, .03, .05, .1, .25)
+grid_max_depth   = c(2 ,4, 6, 8, 10)
+
+titanic.ps = list(
+  
+  # kknn
+  makeParamSet(
+    makeDiscreteParam("k"        ,values = c(1,2,3,4,5,6,7)),
+    makeDiscreteParam("distance" ,values = c(1,2)),
+    makeDiscreteParam("kernel"   ,values = c("rectangular","inv","gaussian","optimal"))
+  ),
+  
+  # naiveBayes
+  makeParamSet(
+    makeDiscreteParam("laplace" ,values = grid_ratio)
+  ),
+  
+  # nnet
+  makeParamSet(
+    makeDiscreteParam("size"  ,values = c(1,3,5,7)),
+    makeDiscreteParam("maxit" ,values = grid_n_estimator),
+    makeDiscreteParam("decay" ,values = grid_learn)
+  ),
+  
+  # gausspr
+  makeParamSet(
+    makeDiscreteParam("kernel" ,values = c("rbfdot","polydot","vanilladot"))
+  ),
+  
+  # svm
+  makeParamSet(
+    makeDiscreteParam("cost"   ,values = c(1,2,3,4,5)),
+    makeDiscreteParam("kernel" ,values = c("linear","polynomial","radial","sigmoid")),
+    makeDiscreteParam("gamma"  ,values = grid_ratio)
+  ),
+  
+  # rpart
+  makeParamSet(
+    makeDiscreteParam("cp" ,values = c(.001, .005, .01, .025, .05))
+  ),  
+  
+  # randomForest
+  makeParamSet(
+    makeDiscreteParam("ntree" ,values = grid_n_estimator),
+    makeDiscreteParam("mtry"  ,values = c(1, 2, 3, 4, 5))
+  ),  
+  
+  # xgboost
+  makeParamSet(
+    makeDiscreteParam("eta"       ,values = grid_learn),
+    makeDiscreteParam("max_depth" ,values = grid_max_depth),
+    makeDiscreteParam("nrounds"   ,values = grid_n_estimator)
+  )
+)
+```
+
+### グリッドサーチの実行
+
+- `tuneParams()`でグリッドサーチを実行する。
+- 複数アルゴリズムに対してグリッドサーチを実行するために`purrr`パッケージの関数を使用する。
+    - 参考：[そろそろ手を出すpurrr](https://speakerd.s3.amazonaws.com/presentations/5708cd12bda44525920301cab836e0a8/slide.pdf)
+
+```{r include=FALSE}
+# グリッドサーチを実行----
+titanic.res =
+  map2(
+    .x = titanic.lrns,
+    .y = titanic.ps,
+    .f =
+      ~ tuneParams(
+        learner  = .x,
+        task     = titanic.task,
+        resampling = cv5,
+        measures = acc,
+        par.set  = .y,
+        control  = makeTuneControlGrid()
+      )
+  )
+```
+
+```{r eval=FALSE}
+# グリッドサーチを実行----
+titanic.res =
+  map2(
+    .x = titanic.lrns,
+    .y = titanic.ps,
+    .f =
+      ~ tuneParams(
+        learner  = .x,
+        task     = titanic.task,
+        resampling = cv5,
+        measures = acc,
+        par.set  = .y,
+        control  = makeTuneControlGrid()
+      )
+  )
+```
+
+### チューニングされたハイパーパラメータの設定
+
+`setHyperPars()`により最適化されたハイパーパラメータを設定する。
+
+```{r}
+# チューニングされたハイパーパラメータを設定----
+titanic.lrn.tuned <-
+  map2(
+    .x = titanic.lrns,
+    .y = titanic.res,
+    .f =
+      ~ setHyperPars(
+        learner  = .x,
+        par.vals = .y$x
+      )
+  )
+```
+
+### チューニング後の性能確認
+
+チューニング前と同様、`benchmark()`にてベンチマーク試験を実施。
+
+```{r include=FALSE}
+# チューニング後の性能を確認----
+titanic.bmr.tuned <-
+  benchmark(
+    learners    = titanic.lrn.tuned,
+    tasks       = titanic.task,
+    resamplings = cv5,
+    measures    = list(acc,timetrain)
+  )
+```
+```{r eval=FALSE}
+# チューニング後の性能を確認----
+titanic.bmr.tuned <-
+  benchmark(
+    learners    = titanic.lrn.tuned,
+    tasks       = titanic.task,
+    resamplings = cv5,
+    measures    = list(acc,timetrain)
+  )
+```
+
+```{r}
+# ベンチマークテストの結果をプロット----
+g1<-
+  plotBMRBoxplots(
+    titanic.bmr.tuned,
+    measure = acc,
+    style="violin"
+  ) +
+  aes(color = learner.id) +
+  theme(strip.text.x = element_text(size = 6))
+print(g1)
+
+g2<-
+  plotBMRBoxplots(
+    titanic.bmr.tuned,
+    measure = timetrain,
+    style="violin"
+  ) +
+  aes(color = learner.id) +
+  theme(strip.text.x = element_text(size = 6))
+print(g2)
+```
+
+
+

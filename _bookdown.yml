@@ -1,0 +1,5 @@
+book_filename: "機械学習勉強会(分類編)"  # 書籍名(ファイル名になる)
+output_dir: "_git"            # 出力先の指定(デフォは"_book")
+rmd_files:                    # 使用するRmdファイルを指定
+  - titanic_r2.Rmd                  # この順番に束ねます
+delete_merged_file: TRUE

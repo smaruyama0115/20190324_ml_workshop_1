@@ -1,0 +1,21 @@
+bookdown::gitbook:
+  toc_depth : 4
+  css: style.css
+  split_by: "rmd"
+  config:
+    toolbar:
+      position: static
+    toc: 
+      collapse: none
+      scroll_highlight: yes
+      before: |
+        <li><a href="./">機械学習勉強会(分類編)</a></li>
+      after: |
+        <li><a href="https://github.com/rstudio/bookdown" target="blank">Published with bookdown</a></li>
+    #toc_depth : 3
+    #toc_float: TRUE
+    pandoc_args: [
+      "--from", "markdown+autolink_bare_uris+tex_math_single_backslash-implicit_figures"
+    ]
+bookdown::pdf_book:
+  keep_tex: yes
