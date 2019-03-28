@@ -5,6 +5,10 @@
 # 解析に必要なパッケージが全てまとまったライブラリ
 library(tidyverse)
 
+# magrittr:
+# パイプ演算子(%>%)の亜種(%<>%, %T>%, %$%)を使用するためのライブラリ
+library(magrittr)
+
 # ggplot2:
 # グラフ作成用ライブラリ
 library(ggplot2)

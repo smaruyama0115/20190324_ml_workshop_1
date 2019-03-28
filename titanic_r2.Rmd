@@ -13,6 +13,7 @@ require(mosaic)   # Load additional packages here
 knitr::opts_chunk$set(
   comment="#",
   warning = FALSE,
+  message = FALSE,
   tidy=FALSE,     # display code as typed
   size="small")   # slightly smaller font for code
 ```
